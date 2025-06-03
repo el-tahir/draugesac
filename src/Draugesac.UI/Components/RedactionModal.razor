@@ -1,0 +1,359 @@
+@inject HttpClient Http
+@inject IJSRuntime JSRuntime
+@inject Draugesac.UI.Services.NotificationService NotificationService
+@using System.Text.Json
+@using Draugesac.UI.Services
+
+@if (IsVisible)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title">
+                        <i class="bi bi-scissors me-2"></i>
+                        Configure Document Redaction
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal" disabled="@isProcessing"></button>
+                </div>
+                
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(errorMessage))
+                    {
+                        <div class="alert alert-danger" role="alert">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                            @errorMessage
+                        </div>
+                    }
+
+                    @if (Document != null)
+                    {
+                        <div class="card bg-light border-0 mb-4">
+                            <div class="card-body p-3">
+                                <h6 class="card-title mb-2">
+                                    <i class="bi bi-file-earmark-text text-primary me-2"></i>
+                                    Document Information
+                                </h6>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <strong>File Name:</strong> @Document.OriginalFileName
+                                    </div>
+                                    <div class="col-md-6">
+                                        <strong>Status:</strong> 
+                                        <span class="badge bg-@GetStatusBadgeColor(Document.Status)">@Document.Status</span>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <strong>Document ID:</strong> @Document.Id.ToString()[..8]...
+                                    </div>
+                                    <div class="col-md-6">
+                                        <strong>Uploaded:</strong> @Document.CreatedAt.ToString("MMM dd, yyyy HH:mm")
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">
+                            <i class="bi bi-list-ul me-1"></i>
+                            Phrases and Patterns to Redact
+                        </label>
+                        <p class="text-muted small mb-3">
+                            Enter sensitive information that should be redacted from the document. Each phrase will be replaced with ██████.
+                        </p>
+                        
+                        <div class="mb-3">
+                            <div class="row g-2">
+                                @for (int i = 0; i < redactionPhrases.Count; i++)
+                                {
+                                    var index = i; // Capture for closure
+                                    <div class="col-12">
+                                        <div class="input-group">
+                                            <span class="input-group-text">@(index + 1)</span>
+                                            <input type="text" 
+                                                   class="form-control" 
+                                                   @bind="redactionPhrases[index]" 
+                                                   placeholder="Enter phrase, name, number, or pattern to redact..."
+                                                   disabled="@isProcessing" />
+                                            <button class="btn btn-outline-danger" 
+                                                    type="button" 
+                                                    @onclick="() => RemovePhrase(index)"
+                                                    disabled="@(isProcessing || redactionPhrases.Count <= 1)"
+                                                    title="Remove phrase">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                        
+                        <button type="button" 
+                                class="btn btn-outline-primary btn-sm" 
+                                @onclick="AddPhrase"
+                                disabled="@(isProcessing || redactionPhrases.Count >= 20)">
+                            <i class="bi bi-plus-circle me-1"></i>
+                            Add Another Phrase
+                        </button>
+                        
+                        @if (redactionPhrases.Count >= 20)
+                        {
+                            <small class="text-muted d-block mt-1">Maximum 20 phrases allowed.</small>
+                        }
+                    </div>
+
+                    @* Currently disabled - backend doesn't support these options yet
+                    <div class="mb-4">
+                        <h6 class="fw-semibold">
+                            <i class="bi bi-gear me-1"></i>
+                            Redaction Options
+                        </h6>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="caseSensitive" id="caseSensitive" disabled="@isProcessing">
+                            <label class="form-check-label" for="caseSensitive">
+                                Case-sensitive matching
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="wholeWordsOnly" id="wholeWordsOnly" disabled="@isProcessing">
+                            <label class="form-check-label" for="wholeWordsOnly">
+                                Match whole words only
+                            </label>
+                        </div>
+                    </div>
+                    *@
+
+                    <div class="card border-warning">
+                        <div class="card-body p-3">
+                            <h6 class="card-title text-warning mb-2">
+                                <i class="bi bi-info-circle me-2"></i>
+                                Common Redaction Examples
+                            </h6>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <small class="text-muted">
+                                        <strong>Personal Info:</strong><br>
+                                        • Social Security Numbers<br>
+                                        • Phone Numbers<br>
+                                        • Email Addresses
+                                    </small>
+                                </div>
+                                <div class="col-md-6">
+                                    <small class="text-muted">
+                                        <strong>Financial:</strong><br>
+                                        • Credit Card Numbers<br>
+                                        • Bank Account Numbers<br>
+                                        • Account IDs
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseModal" disabled="@isProcessing">
+                        <i class="bi bi-x-lg me-1"></i>
+                        Cancel
+                    </button>
+                    <button type="button" 
+                            class="btn btn-warning" 
+                            @onclick="StartRedaction"
+                            disabled="@(isProcessing || !HasValidPhrases())">
+                        @if (isProcessing)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                            <span>Starting Redaction...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-scissors me-1"></i>
+                            <span>Start Redaction</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsVisible { get; set; }
+    [Parameter] public DocumentInfo? Document { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<RedactionResult> OnRedactionStarted { get; set; }
+
+    private List<string> redactionPhrases = new() { "" };
+    private bool isProcessing = false;
+    private string errorMessage = string.Empty;
+
+    // Document model to match the parent component
+    public class DocumentInfo
+    {
+        public Guid Id { get; set; }
+        public string OriginalFileName { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public DateTime CreatedAt { get; set; }
+        public string? S3Key { get; set; }
+    }
+
+    // Redaction request model
+    public class RedactionRequest
+    {
+        public List<string> PhrasesToRedact { get; set; } = new();
+    }
+
+    // Redaction result model
+    public class RedactionResult
+    {
+        public Guid DocumentId { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public List<string> PhrasesToRedact { get; set; } = new();
+        public string Message { get; set; } = string.Empty;
+        public DateTime QueuedAt { get; set; }
+    }
+
+    // API Error Response model
+    public class ApiErrorResponse
+    {
+        public string Error { get; set; } = string.Empty;
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (IsVisible && Document != null)
+        {
+            // Reset form when modal opens
+            redactionPhrases = new() { "" };
+            errorMessage = string.Empty;
+        }
+    }
+
+    private void AddPhrase()
+    {
+        if (redactionPhrases.Count < 20)
+        {
+            redactionPhrases.Add("");
+        }
+    }
+
+    private void RemovePhrase(int index)
+    {
+        if (redactionPhrases.Count > 1)
+        {
+            redactionPhrases.RemoveAt(index);
+        }
+    }
+
+    private bool HasValidPhrases()
+    {
+        return redactionPhrases.Any(phrase => !string.IsNullOrWhiteSpace(phrase));
+    }
+
+    private async Task CloseModal()
+    {
+        if (!isProcessing)
+        {
+            await OnClose.InvokeAsync();
+        }
+    }
+
+    private async Task StartRedaction()
+    {
+        if (Document == null || isProcessing || !HasValidPhrases()) return;
+
+        errorMessage = string.Empty;
+        isProcessing = true;
+
+        try
+        {
+            // Filter out empty phrases
+            var validPhrases = redactionPhrases
+                .Where(phrase => !string.IsNullOrWhiteSpace(phrase))
+                .Select(phrase => phrase.Trim())
+                .Distinct()
+                .ToList();
+
+            if (!validPhrases.Any())
+            {
+                errorMessage = "Please enter at least one phrase to redact.";
+                return;
+            }
+
+            var request = new RedactionRequest
+            {
+                PhrasesToRedact = validPhrases
+            };
+
+            var json = JsonSerializer.Serialize(request, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            });
+
+            using var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            
+            // Make API call to start redaction
+            var response = await Http.PostAsync($"documents/{Document.Id}/redactions", content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var responseContent = await response.Content.ReadAsStringAsync();
+                var result = JsonSerializer.Deserialize<RedactionResult>(responseContent, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (result != null)
+                {
+                    // Notify parent component of successful redaction start
+                    await OnRedactionStarted.InvokeAsync(result);
+                    
+                    // Close modal
+                    await CloseModal();
+                }
+                else
+                {
+                    errorMessage = "Redaction started but failed to parse response.";
+                }
+            }
+            else
+            {
+                // Parse error response
+                var errorContent = await response.Content.ReadAsStringAsync();
+                try
+                {
+                    var errorResponse = JsonSerializer.Deserialize<ApiErrorResponse>(errorContent, new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+                    errorMessage = $"Failed to start redaction: {errorResponse?.Error ?? "Unknown error"}";
+                }
+                catch
+                {
+                    errorMessage = $"Failed to start redaction: {response.StatusCode} - {errorContent}";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to start redaction: {ex.Message}";
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private string GetStatusBadgeColor(string status)
+    {
+        return status.ToLowerInvariant() switch
+        {
+            "uploaded" => "primary",
+            "processing" => "warning",
+            "completed" => "success",
+            "failed" => "danger",
+            _ => "secondary"
+        };
+    }
+} 

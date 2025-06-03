@@ -1,0 +1,43 @@
+@* Loading Indicator Component *@
+
+@if (IsVisible)
+{
+    <div class="loading-indicator d-flex align-items-center @AdditionalClasses">
+        @if (ShowSpinner)
+        {
+            <div class="spinner-border @SpinnerSize text-@SpinnerColor me-2" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        }
+        
+        @if (!string.IsNullOrEmpty(Message))
+        {
+            <span class="loading-message @MessageClasses">@Message</span>
+        }
+        
+        @if (ShowProgress && Progress.HasValue)
+        {
+            <div class="progress ms-2 flex-grow-1" style="height: 6px;">
+                <div class="progress-bar progress-bar-striped @(Animated ? "progress-bar-animated" : "")" 
+                     role="progressbar" 
+                     style="width: @(Progress.Value)%"
+                     aria-valuenow="@Progress.Value" 
+                     aria-valuemin="0" 
+                     aria-valuemax="100"></div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsVisible { get; set; } = true;
+    [Parameter] public string Message { get; set; } = "Loading...";
+    [Parameter] public bool ShowSpinner { get; set; } = true;
+    [Parameter] public bool ShowProgress { get; set; } = false;
+    [Parameter] public int? Progress { get; set; }
+    [Parameter] public bool Animated { get; set; } = true;
+    [Parameter] public string SpinnerColor { get; set; } = "primary";
+    [Parameter] public string SpinnerSize { get; set; } = "spinner-border-sm";
+    [Parameter] public string MessageClasses { get; set; } = "";
+    [Parameter] public string AdditionalClasses { get; set; } = "";
+} 

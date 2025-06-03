@@ -1,0 +1,476 @@
+@page "/upload"
+@inject HttpClient Http
+@inject IJSRuntime JSRuntime
+@inject Draugesac.UI.Services.DocumentStateService DocumentState
+@inject Draugesac.UI.Services.NotificationService NotificationService
+@using System.Text.Json
+@using Draugesac.UI.Components
+@using Draugesac.UI.Services
+@using Draugesac.Domain.Enums
+
+<PageTitle>Upload Document - Draugesac</PageTitle>
+
+<div class="container-fluid py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8 col-xl-6">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-primary text-white">
+                    <h3 class="card-title mb-0">
+                        <i class="bi bi-cloud-upload me-2"></i>
+                        Upload Document for Redaction
+                    </h3>
+                    <p class="mb-0 mt-1 opacity-75">Upload your document to begin the redaction process</p>
+                </div>
+                
+                <div class="card-body p-4">
+                    @* Enhanced Loading Indicator *@
+                    @if (isUploading)
+                    {
+                        <div class="alert alert-info border-0 mb-4">
+                            <LoadingIndicator IsVisible="true" 
+                                            Message="@uploadStatusMessage" 
+                                            ShowProgress="true" 
+                                            Progress="uploadProgress"
+                                            SpinnerColor="info"
+                                            Animated="true" />
+                        </div>
+                    }
+
+                    <div class="mb-4">
+                        <label for="fileInput" class="form-label fw-semibold">
+                            <i class="bi bi-file-earmark-text me-1"></i>
+                            Select Document
+                        </label>
+                        <div class="input-group">
+                            <InputFile class="@($"form-control {(selectedFile != null ? "is-valid" : "")}")" 
+                                      id="fileInput" 
+                                      OnChange="HandleFileSelected" 
+                                      accept=".txt,.pdf,.doc,.docx"
+                                      disabled="@isUploading" />
+                            <label class="input-group-text" for="fileInput">
+                                <i class="bi bi-folder2-open"></i>
+                            </label>
+                        </div>
+                        <div class="form-text">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Supported formats: TXT, PDF, DOC, DOCX (Max: 10MB)
+                        </div>
+                    </div>
+
+                    @if (selectedFile != null)
+                    {
+                        <div class="card bg-light border-0 mb-4">
+                            <div class="card-body p-3">
+                                <h6 class="card-title mb-2">
+                                    <i class="bi bi-file-earmark-check text-success me-2"></i>
+                                    Selected File
+                                </h6>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <p class="mb-1 fw-medium">@selectedFile.Name</p>
+                                        <small class="text-muted">@FormatFileSize(selectedFile.Size)</small>
+                                    </div>
+                                    <button class="btn btn-outline-danger btn-sm" @onclick="ClearSelectedFile" disabled="@isUploading">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-primary btn-lg" 
+                                @onclick="UploadFile" 
+                                disabled="@(selectedFile == null || isUploading)">
+                            @if (isUploading)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                <span>Uploading...</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-cloud-upload me-2"></i>
+                                <span>Upload Document</span>
+                            }
+                        </button>
+                        
+                        @if (selectedFile != null && !isUploading)
+                        {
+                            <button class="btn btn-outline-secondary" @onclick="ClearSelectedFile">
+                                <i class="bi bi-arrow-counterclockwise me-1"></i>
+                                Choose Different File
+                            </button>
+                        }
+                    </div>
+                </div>
+                
+                <div class="card-footer bg-light border-0">
+                    <div class="row text-center text-muted small">
+                        <div class="col-4">
+                            <i class="bi bi-shield-check text-success"></i>
+                            <div>Secure Upload</div>
+                        </div>
+                        <div class="col-4">
+                            <i class="bi bi-lightning text-warning"></i>
+                            <div>Fast Processing</div>
+                        </div>
+                        <div class="col-4">
+                            <i class="bi bi-eye-slash text-info"></i>
+                            <div>Privacy Protected</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* Display recently uploaded documents *@
+            @if (uploadedDocuments.Any())
+            {
+                <div class="card shadow-sm border-0 mt-4">
+                    <div class="card-header bg-success text-white">
+                        <h4 class="card-title mb-0">
+                            <i class="bi bi-check2-circle me-2"></i>
+                            Recently Uploaded Documents
+                        </h4>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="list-group list-group-flush">
+                            @foreach (var doc in uploadedDocuments.OrderByDescending(d => d.CreatedAt))
+                            {
+                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div class="d-flex align-items-center">
+                                        <i class="bi bi-file-earmark-text text-primary me-3 fs-4"></i>
+                                        <div>
+                                            <h6 class="mb-0 fw-medium">@doc.OriginalFileName</h6>
+                                            <small class="text-muted">
+                                                ID: @doc.Id.ToString()[..8]... | 
+                                                Status: <span class="badge bg-@GetStatusBadgeColor(doc.Status)">@doc.Status</span> |
+                                                Uploaded: @doc.CreatedAt.ToString("MMM dd, yyyy HH:mm")
+                                            </small>
+                                        </div>
+                                    </div>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" @onclick="() => ViewDocumentDetails(doc.Id)" title="View Details">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        <button class="btn btn-outline-warning" @onclick="() => OpenRedactionModal(doc)" title="Start Redaction" disabled="@(doc.Status != "Uploaded")">
+                                            <i class="bi bi-scissors"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@* Redaction Modal Component *@
+<RedactionModal IsVisible="@showRedactionModal" 
+                Document="@selectedDocumentForRedaction" 
+                OnClose="CloseRedactionModal"
+                OnRedactionStarted="HandleRedactionStarted" />
+
+@code {
+    private IBrowserFile? selectedFile;
+    private bool isUploading = false;
+    private string uploadStatusMessage = "Preparing upload...";
+    private int uploadProgress = 0;
+    private List<UploadedDocument> uploadedDocuments = new();
+    private HashSet<Guid> refreshingDocuments = new();
+    
+    // Redaction modal state
+    private bool showRedactionModal = false;
+    private RedactionModal.DocumentInfo? selectedDocumentForRedaction;
+    
+    private const long MaxFileSize = 10 * 1024 * 1024; // 10MB
+
+    // Response model matching the API response
+    public class UploadedDocument
+    {
+        public Guid Id { get; set; }
+        public string OriginalFileName { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public DateTime CreatedAt { get; set; }
+        public string? S3Key { get; set; }
+    }
+
+    // API Error Response model
+    public class ApiErrorResponse
+    {
+        public string Error { get; set; } = string.Empty;
+    }
+
+    // Upload Response model matching API response
+    public class UploadResponse
+    {
+        public Guid Id { get; set; }
+        public string OriginalFileName { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public DateTime CreatedAt { get; set; }
+        public string? S3Key { get; set; }
+    }
+
+    // Error Response model for API errors
+    public class ErrorResponse
+    {
+        public string Error { get; set; } = string.Empty;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Subscribe to document state changes
+        DocumentState.DocumentsChanged += OnDocumentStateChanged;
+        
+        // Load existing documents from state
+        LoadDocumentsFromState();
+    }
+
+    private void OnDocumentStateChanged()
+    {
+        // Refresh the local list when state changes
+        LoadDocumentsFromState();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void LoadDocumentsFromState()
+    {
+        // Convert ClientDocumentInfo to UploadedDocument for display
+        var stateDocuments = DocumentState.GetDocuments();
+        uploadedDocuments = stateDocuments.Select(d => new UploadedDocument
+        {
+            Id = d.Id,
+            OriginalFileName = d.OriginalFileName,
+            Status = d.Status.ToString(),
+            CreatedAt = d.CreatedAt,
+            S3Key = d.OriginalS3Key
+        }).ToList();
+    }
+
+    private void HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        selectedFile = e.File;
+        StateHasChanged();
+    }
+
+    private async Task UploadFile()
+    {
+        if (selectedFile == null) return;
+
+        isUploading = true;
+        uploadProgress = 0;
+        uploadStatusMessage = "Preparing upload...";
+        StateHasChanged();
+
+        try
+        {
+            // Validate file size (10MB limit)
+            const long maxFileSize = 10 * 1024 * 1024;
+            if (selectedFile.Size > maxFileSize)
+            {
+                await NotificationService.ShowErrorAsync("File size exceeds 10MB limit. Please select a smaller file.");
+                return;
+            }
+
+            await NotificationService.ShowInfoAsync($"Starting upload of '{selectedFile.Name}'...");
+
+            // Simulate upload progress with status updates
+            uploadStatusMessage = "Validating file...";
+            uploadProgress = 10;
+            StateHasChanged();
+            await Task.Delay(200);
+
+            uploadStatusMessage = "Preparing secure upload...";
+            uploadProgress = 25;
+            StateHasChanged();
+            await Task.Delay(300);
+
+            uploadStatusMessage = "Uploading to server...";
+            uploadProgress = 40;
+            StateHasChanged();
+
+            // Create multipart form data
+            using var content = new MultipartFormDataContent();
+            using var fileStream = selectedFile.OpenReadStream(maxFileSize);
+            using var streamContent = new StreamContent(fileStream);
+            streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(selectedFile.ContentType);
+            content.Add(streamContent, "file", selectedFile.Name);
+
+            uploadStatusMessage = "Processing on server...";
+            uploadProgress = 70;
+            StateHasChanged();
+
+            // Upload to API
+            var response = await Http.PostAsync("documents", content);
+
+            uploadStatusMessage = "Finalizing upload...";
+            uploadProgress = 90;
+            StateHasChanged();
+            await Task.Delay(200);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var responseContent = await response.Content.ReadAsStringAsync();
+                var uploadResponse = JsonSerializer.Deserialize<UploadResponse>(responseContent, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (uploadResponse != null)
+                {
+                    // Create document for local list
+                    var uploadedDoc = new UploadedDocument
+                    {
+                        Id = uploadResponse.Id,
+                        OriginalFileName = uploadResponse.OriginalFileName,
+                        Status = uploadResponse.Status,
+                        CreatedAt = uploadResponse.CreatedAt,
+                        S3Key = uploadResponse.S3Key
+                    };
+
+                    // Add to local list for immediate display
+                    uploadedDocuments.Add(uploadedDoc);
+
+                    // Add to centralized document state
+                    var clientDoc = new ClientDocumentInfo
+                    {
+                        Id = uploadResponse.Id,
+                        OriginalFileName = uploadResponse.OriginalFileName,
+                        Status = Enum.Parse<DocumentStatus>(uploadResponse.Status),
+                        CreatedAt = uploadResponse.CreatedAt,
+                        OriginalS3Key = uploadResponse.S3Key
+                    };
+                    DocumentState.AddDocument(clientDoc);
+
+                    uploadProgress = 100;
+                    uploadStatusMessage = "Upload completed successfully!";
+                    StateHasChanged();
+                    await Task.Delay(500);
+
+                    await NotificationService.ShowSuccessAsync(
+                        $"'{selectedFile.Name}' uploaded successfully! Document ID: {uploadedDoc.Id.ToString()[..8]}...");
+                    
+                    // Clear the selected file
+                    selectedFile = null;
+                }
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                try
+                {
+                    var errorResponse = JsonSerializer.Deserialize<ErrorResponse>(errorContent, new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+                    await NotificationService.ShowErrorAsync(
+                        $"Upload failed: {errorResponse?.Error ?? response.StatusCode.ToString()}");
+                }
+                catch
+                {
+                    await NotificationService.ShowErrorAsync(
+                        $"Upload failed: {response.StatusCode} - {response.ReasonPhrase}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error uploading file: {ex.Message}");
+        }
+        finally
+        {
+            isUploading = false;
+            uploadProgress = 0;
+            uploadStatusMessage = "Preparing upload...";
+            StateHasChanged();
+        }
+    }
+
+    private void ClearSelectedFile()
+    {
+        selectedFile = null;
+        StateHasChanged();
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        string[] suffixes = { "B", "KB", "MB", "GB" };
+        int counter = 0;
+        decimal number = bytes;
+        
+        while (Math.Round(number / 1024) >= 1)
+        {
+            number /= 1024;
+            counter++;
+        }
+        
+        return $"{number:n1} {suffixes[counter]}";
+    }
+
+    private string GetStatusBadgeColor(string status)
+    {
+        return status.ToLowerInvariant() switch
+        {
+            "uploaded" => "primary",
+            "processing" => "warning",
+            "completed" => "success",
+            "failed" => "danger",
+            _ => "secondary"
+        };
+    }
+
+    private async Task ViewDocumentDetails(Guid documentId)
+    {
+        // TODO: Navigate to document details page or show modal
+        // For now, just show the document ID
+        await NotificationService.ShowInfoAsync($"📄 Document Details - ID: {documentId}");
+    }
+
+    private void OpenRedactionModal(UploadedDocument document)
+    {
+        // Convert UploadedDocument to DocumentInfo for the modal
+        selectedDocumentForRedaction = new RedactionModal.DocumentInfo
+        {
+            Id = document.Id,
+            OriginalFileName = document.OriginalFileName,
+            S3Key = document.S3Key
+        };
+        
+        showRedactionModal = true;
+    }
+
+    private void CloseRedactionModal()
+    {
+        showRedactionModal = false;
+        selectedDocumentForRedaction = null;
+    }
+
+    private async Task HandleRedactionStarted(RedactionModal.RedactionResult result)
+    {
+        try
+        {
+            // Update document status to Processing in the state service
+            if (Enum.TryParse<DocumentStatus>(result.Status, out var newStatus))
+            {
+                DocumentState.UpdateDocumentStatus(result.DocumentId, newStatus);
+            }
+
+            await NotificationService.ShowSuccessAsync(
+                $"✂️ {result.Message} Queued at: {result.QueuedAt:HH:mm} UTC");
+            
+            // Refresh the local documents list
+            LoadDocumentsFromState();
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error handling redaction result: {ex.Message}");
+        }
+    }
+
+    public void Dispose()
+    {
+        // Unsubscribe from events to prevent memory leaks
+        DocumentState.DocumentsChanged -= OnDocumentStateChanged;
+    }
+} 
