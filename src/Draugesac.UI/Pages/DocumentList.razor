@@ -1,0 +1,672 @@
+@page "/documents"
+@using System.Text.Json
+@using Draugesac.UI.Services
+@using Draugesac.Domain.Enums
+@inject HttpClient Http
+@inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
+@inject DocumentStateService DocumentState
+@inject NotificationService NotificationService
+@implements IDisposable
+
+<PageTitle>My Documents - Draugesac</PageTitle>
+
+<div class="container-fluid py-4">
+    <!-- Page Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-1">
+                        <i class="bi bi-files me-2 text-primary"></i>
+                        My Documents
+                    </h1>
+                    <p class="text-muted mb-0">Manage your uploaded documents and redaction jobs</p>
+                </div>
+                <div>
+                    <a href="/upload" class="btn btn-primary">
+                        <i class="bi bi-cloud-upload me-1"></i>
+                        Upload New Document
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading State -->
+    @if (isLoading)
+    {
+        <div class="row">
+            <div class="col-12">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body text-center py-5">
+                        <div class="spinner-border text-primary mb-3" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="text-muted mb-0">Loading your documents...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Error State -->
+    @if (!isLoading && !string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="row">
+            <div class="col-12">
+                <div class="alert alert-danger d-flex align-items-center" role="alert">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    <div>
+                        <strong>Error loading documents:</strong> @errorMessage
+                        <button class="btn btn-link p-0 ms-2" @onclick="LoadDocuments">
+                            <i class="bi bi-arrow-clockwise"></i> Retry
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Empty State -->
+    @if (!isLoading && string.IsNullOrEmpty(errorMessage) && !documents.Any())
+    {
+        <div class="row">
+            <div class="col-12">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body text-center py-5">
+                        <i class="bi bi-file-earmark text-muted display-1 mb-3"></i>
+                        <h4 class="text-muted mb-3">No documents found</h4>
+                        <p class="text-muted mb-4">You haven't uploaded any documents yet. Get started by uploading your first document.</p>
+                        <a href="/upload" class="btn btn-primary">
+                            <i class="bi bi-cloud-upload me-1"></i>
+                            Upload Your First Document
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Documents Table -->
+    @if (!isLoading && string.IsNullOrEmpty(errorMessage) && documents.Any())
+    {
+        <div class="row">
+            <div class="col-12">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">
+                            <i class="bi bi-list-ul me-2"></i>
+                            Documents (@documents.Count)
+                        </h5>
+                        <button class="btn btn-outline-secondary btn-sm" @onclick="LoadDocuments">
+                            <i class="bi bi-arrow-clockwise me-1"></i>
+                            Refresh
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="ps-3">
+                                            <i class="bi bi-file-earmark me-1"></i>
+                                            Filename
+                                        </th>
+                                        <th>
+                                            <i class="bi bi-flag me-1"></i>
+                                            Status
+                                        </th>
+                                        <th>
+                                            <i class="bi bi-calendar me-1"></i>
+                                            Upload Date
+                                        </th>
+                                        <th class="text-center">
+                                            <i class="bi bi-gear me-1"></i>
+                                            Actions
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var document in documents.OrderByDescending(d => d.CreatedAt))
+                                    {
+                                        <tr>
+                                            <td class="ps-3">
+                                                <div class="d-flex align-items-center">
+                                                    <i class="@GetFileIcon(document.OriginalFileName) me-2 text-primary"></i>
+                                                    <span class="fw-medium">@document.OriginalFileName</span>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span class="badge @GetStatusBadgeClass(document.Status)">
+                                                    <i class="@GetStatusIcon(document.Status) me-1"></i>
+                                                    @document.Status
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div>
+                                                    <div class="fw-medium">@document.CreatedAt.ToString("MMM dd, yyyy")</div>
+                                                    <small class="text-muted">@document.CreatedAt.ToString("HH:mm")</small>
+                                                </div>
+                                            </td>
+                                            <td class="text-center">
+                                                <div class="btn-group" role="group" aria-label="Document Actions">
+                                                    <!-- View Details -->
+                                                    <button class="btn btn-outline-primary" 
+                                                            @onclick="() => ViewDocument(document.Id)"
+                                                            title="View Details">
+                                                        <i class="bi bi-eye me-1"></i> View
+                                                    </button>
+                                                    
+                                                    <!-- Refresh Status -->
+                                                    <button class="btn btn-outline-secondary"
+                                                            @onclick="() => RefreshDocumentStatus(document.Id)"
+                                                            disabled="@IsRefreshing(document.Id)"
+                                                            title="Refresh Status">
+                                                        @if (IsRefreshing(document.Id))
+                                                        {
+                                                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                                            <span>Refreshing...</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <i class="bi bi-arrow-clockwise me-1"></i> <span>Refresh</span>
+                                                        }
+                                                    </button>
+                                                    
+                                                    <!-- Start Redaction -->
+                                                    <button class="btn btn-outline-warning"
+                                                            @onclick="() => StartRedaction(document)"
+                                                            disabled="@(document.Status == DocumentStatus.Processing)"
+                                                            title="Start Redaction">
+                                                        <i class="bi bi-scissors me-1"></i> Redact
+                                                    </button>
+                                                    
+                                                    <!-- Download Original -->
+                                                    <button class="btn btn-outline-success"
+                                                            @onclick="() => DownloadOriginal(document.Id)"
+                                                            title="Download Original">
+                                                        <i class="bi bi-download me-1"></i> Original
+                                                    </button>
+                                                    
+                                                    <!-- Download Redacted (if available) -->
+                                                    @if (document.Status == DocumentStatus.Completed && !string.IsNullOrEmpty(document.RedactedS3Key))
+                                                    {
+                                                        <button class="btn btn-outline-info"
+                                                                @onclick="() => DownloadRedacted(document.Id)"
+                                                                title="Download Redacted">
+                                                            <i class="bi bi-file-lock me-1"></i> Redacted
+                                                        </button>
+                                                    }
+                                                    
+                                                    <!-- Delete Document -->
+                                                    <button class="btn btn-outline-danger"
+                                                            @onclick="() => PromptDeleteDocument(document)"
+                                                            title="Delete Document">
+                                                        <i class="bi bi-trash me-1"></i> Delete
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Statistics Cards -->
+    @if (documents.Any())
+    {
+        <div class="row mt-4">
+            <div class="col-md-3">
+                <div class="card border-0 bg-primary text-white">
+                    <div class="card-body text-center">
+                        <h3 class="mb-1">@statistics.TotalDocuments</h3>
+                        <small>Total Documents</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-0 bg-success text-white">
+                    <div class="card-body text-center">
+                        <h3 class="mb-1">@statistics.CompletedCount</h3>
+                        <small>Completed</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-0 bg-warning text-white">
+                    <div class="card-body text-center">
+                        <h3 class="mb-1">@statistics.ProcessingCount</h3>
+                        <small>Processing</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-0 bg-danger text-white">
+                    <div class="card-body text-center">
+                        <h3 class="mb-1">@statistics.FailedCount</h3>
+                        <small>Failed</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<!-- Redaction Modal -->
+<RedactionModal IsVisible="@showRedactionModal"
+                Document="@selectedDocumentForRedaction"
+                OnClose="CloseRedactionModal"
+                OnRedactionStarted="HandleRedactionStarted" />
+
+@code {
+    private List<ClientDocumentInfo> documents = new();
+    private DocumentStatistics statistics = new();
+    private bool isLoading = true;
+    private string? errorMessage;
+    private HashSet<Guid> refreshingDocuments = new();
+    
+    // Redaction Modal State
+    private bool showRedactionModal = false;
+    private RedactionModal.DocumentInfo? selectedDocumentForRedaction;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Subscribe to document changes for real-time updates
+        DocumentState.DocumentsChanged += OnDocumentsChanged;
+        await LoadDocuments();
+    }
+
+    private async Task LoadDocuments()
+    {
+        isLoading = true;
+        errorMessage = null; // Clear any previous error
+        StateHasChanged();
+
+        try
+        {
+            // Load documents from the API via DocumentStateService
+            await DocumentState.LoadDocumentsFromApiAsync();
+            
+            // Get documents from the state service
+            documents = DocumentState.GetDocuments();
+            statistics = DocumentState.GetStatistics();
+            
+            // Ensure error message is cleared on successful load
+            errorMessage = null;
+        }
+        catch (HttpRequestException ex)
+        {
+            errorMessage = $"Network error: {ex.Message}";
+            // Log error for debugging
+            await JSRuntime.InvokeVoidAsync("console.error", $"HTTP error loading documents: {ex.Message}");
+        }
+        catch (InvalidOperationException ex)
+        {
+            errorMessage = $"Data error: {ex.Message}";
+            // Log error for debugging
+            await JSRuntime.InvokeVoidAsync("console.error", $"Data parsing error loading documents: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+            // Log error for debugging
+            await JSRuntime.InvokeVoidAsync("console.error", $"Error loading documents: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OnDocumentsChanged()
+    {
+        // Update the local state when documents change
+        documents = DocumentState.GetDocuments();
+        statistics = DocumentState.GetStatistics();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private bool IsRefreshing(Guid documentId)
+    {
+        return refreshingDocuments.Contains(documentId);
+    }
+
+    private async Task RefreshDocumentStatus(Guid documentId)
+    {
+        try
+        {
+            // Add to refreshing set to show loading state
+            refreshingDocuments.Add(documentId);
+            StateHasChanged();
+
+            await NotificationService.ShowInfoAsync("Refreshing document status...");
+
+            // Call the API to get updated document status
+            var response = await Http.GetAsync($"documents/{documentId}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var responseContent = await response.Content.ReadAsStringAsync();
+                var apiDocument = JsonSerializer.Deserialize<ApiDocumentResponse>(responseContent, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (apiDocument != null)
+                {
+                    // Parse the status from the API response
+                    if (Enum.TryParse<DocumentStatus>(apiDocument.Status, out var newStatus))
+                    {
+                        // Update the document in the state service
+                        DocumentState.UpdateDocumentStatus(documentId, newStatus, apiDocument.RedactedS3Key);
+                        
+                        // Show success feedback
+                        await NotificationService.ShowSuccessAsync(
+                            $"Document '{apiDocument.OriginalFileName}' status updated to: {newStatus}");
+                    }
+                    else
+                    {
+                        await NotificationService.ShowErrorAsync($"Invalid status received from API: {apiDocument.Status}");
+                    }
+                }
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                await NotificationService.ShowWarningAsync("Document not found on the server. It may have been deleted.");
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                await NotificationService.ShowErrorAsync($"Failed to refresh status: {response.StatusCode}");
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            await NotificationService.ShowErrorAsync($"Network error refreshing document status: {ex.Message}");
+        }
+        catch (JsonException ex)
+        {
+            await NotificationService.ShowErrorAsync($"Error parsing API response: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"Unexpected error refreshing document status: {ex.Message}");
+        }
+        finally
+        {
+            // Remove from refreshing set to hide loading state
+            refreshingDocuments.Remove(documentId);
+            StateHasChanged();
+        }
+    }
+
+    private async Task ViewDocument(Guid documentId)
+    {
+        // TODO: Implement document details view/modal
+        await NotificationService.ShowInfoAsync($"📄 View document details for {documentId}");
+    }
+
+    private void StartRedaction(ClientDocumentInfo document)
+    {
+        // Integration with RedactionModal component
+        OpenRedactionModal(document);
+    }
+
+    private void OpenRedactionModal(ClientDocumentInfo document)
+    {
+        selectedDocumentForRedaction = new RedactionModal.DocumentInfo
+        {
+            Id = document.Id,
+            OriginalFileName = document.OriginalFileName,
+            Status = document.Status.ToString(),
+            CreatedAt = document.CreatedAt,
+            S3Key = document.OriginalS3Key
+        };
+        showRedactionModal = true;
+    }
+
+    private void CloseRedactionModal()
+    {
+        showRedactionModal = false;
+        selectedDocumentForRedaction = null;
+    }
+
+    private async Task HandleRedactionStarted(RedactionModal.RedactionResult result)
+    {
+        try
+        {
+            // Update document status to Processing in the state service
+            if (Enum.TryParse<DocumentStatus>(result.Status, out var newStatus))
+            {
+                DocumentState.UpdateDocumentStatus(result.DocumentId, newStatus);
+            }
+
+            // Show success message
+            await JSRuntime.InvokeVoidAsync("console.log", $"Redaction started for document {result.DocumentId}");
+            
+            // Optionally show a toast notification
+            await JSRuntime.InvokeVoidAsync("alert", $"Redaction job started successfully! Processing {result.PhrasesToRedact.Count} phrases.");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error handling redaction result: {ex.Message}");
+        }
+    }
+
+    private async Task PromptDeleteDocument(ClientDocumentInfo document)
+    {
+        if (document == null) return;
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
+            $"Are you sure you want to delete the document \'{document.OriginalFileName}\' (ID: {document.Id.ToString()[..8]}...)?\n\nThis action will delete the document and its associated files. This cannot be undone.");
+
+        if (confirmed)
+        {
+            await ExecuteDeleteDocument(document);
+        }
+    }
+
+    private async Task ExecuteDeleteDocument(ClientDocumentInfo document)
+    {
+        if (document == null) return;
+
+        try
+        {
+            await NotificationService.ShowInfoAsync($"Attempting to delete document '{document.OriginalFileName}'...");
+
+            var response = await Http.DeleteAsync($"documents/{document.Id}");
+
+            if (response.IsSuccessStatusCode) // 204 No Content is success
+            {
+                DocumentState.RemoveDocument(document.Id); // Update client-side state
+                await NotificationService.ShowSuccessAsync($"Document '{document.OriginalFileName}' deleted successfully.");
+                // StateHasChanged() will be called by DocumentState.DocumentsChanged event
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                await NotificationService.ShowErrorAsync($"Failed to delete document '{document.OriginalFileName}': Document not found on server. It might have already been deleted.");
+                // Optionally remove from local state if confirmed not found
+                DocumentState.RemoveDocument(document.Id);
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                var errorMessage = !string.IsNullOrEmpty(errorContent) ? JsonDocument.Parse(errorContent)?.RootElement.GetProperty("Error").GetString() : response.ReasonPhrase;
+                await NotificationService.ShowErrorAsync($"Failed to delete document '{document.OriginalFileName}': {errorMessage ?? "An unknown error occurred."}");
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            await NotificationService.ShowErrorAsync($"Network error deleting document '{document.OriginalFileName}': {ex.Message}");
+        }
+        catch (JsonException ex)
+        {
+            // This might happen if error response is not the expected JSON
+            await NotificationService.ShowErrorAsync($"Error parsing server response for delete operation on '{document.OriginalFileName}': {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            await NotificationService.ShowErrorAsync($"An unexpected error occurred while deleting '{document.OriginalFileName}': {ex.Message}");
+        }
+    }
+
+    private async Task DownloadOriginal(Guid documentId)
+    {
+        try
+        {
+            // Call API to get presigned download URL
+            var response = await Http.GetAsync($"documents/{documentId}/download");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var responseContent = await response.Content.ReadAsStringAsync();
+                var downloadResponse = JsonSerializer.Deserialize<DownloadResponse>(responseContent, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (downloadResponse != null && !string.IsNullOrEmpty(downloadResponse.DownloadUrl))
+                {
+                    // Use NavigationManager to trigger browser download
+                    Navigation.NavigateTo(downloadResponse.DownloadUrl, forceLoad: true);
+                }
+                else
+                {
+                    await JSRuntime.InvokeVoidAsync("alert", "Download URL not found in API response.");
+                }
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                await JSRuntime.InvokeVoidAsync("alert", $"Failed to get download URL: {response.StatusCode} - {errorContent}");
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Network error downloading document: {ex.Message}");
+        }
+        catch (JsonException ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error parsing download response: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error downloading document: {ex.Message}");
+        }
+    }
+
+    private async Task DownloadRedacted(Guid documentId)
+    {
+        try
+        {
+            // Call API to get presigned download URL for redacted document
+            var response = await Http.GetAsync($"documents/{documentId}/download/redacted");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var responseContent = await response.Content.ReadAsStringAsync();
+                var downloadResponse = JsonSerializer.Deserialize<DownloadResponse>(responseContent, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                if (downloadResponse != null && !string.IsNullOrEmpty(downloadResponse.DownloadUrl))
+                {
+                    // Use NavigationManager to trigger browser download
+                    Navigation.NavigateTo(downloadResponse.DownloadUrl, forceLoad: true);
+                }
+                else
+                {
+                    await JSRuntime.InvokeVoidAsync("alert", "Redacted download URL not found in API response.");
+                }
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                await JSRuntime.InvokeVoidAsync("alert", $"Failed to get redacted download URL: {response.StatusCode} - {errorContent}");
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Network error downloading redacted document: {ex.Message}");
+        }
+        catch (JsonException ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error parsing redacted download response: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error downloading redacted document: {ex.Message}");
+        }
+    }
+
+    private string GetFileIcon(string fileName)
+    {
+        var extension = Path.GetExtension(fileName)?.ToLowerInvariant();
+        return extension switch
+        {
+            ".pdf" => "bi-file-earmark-pdf",
+            ".doc" or ".docx" => "bi-file-earmark-word",
+            ".txt" => "bi-file-earmark-text",
+            _ => "bi-file-earmark"
+        };
+    }
+
+    private string GetStatusBadgeClass(DocumentStatus status)
+    {
+        return status switch
+        {
+            DocumentStatus.Uploaded => "bg-secondary",
+            DocumentStatus.Processing => "bg-warning",
+            DocumentStatus.Completed => "bg-success",
+            DocumentStatus.Failed => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string GetStatusIcon(DocumentStatus status)
+    {
+        return status switch
+        {
+            DocumentStatus.Uploaded => "bi-cloud-upload",
+            DocumentStatus.Processing => "bi-gear",
+            DocumentStatus.Completed => "bi-check-circle",
+            DocumentStatus.Failed => "bi-x-circle",
+            _ => "bi-question-circle"
+        };
+    }
+
+    public void Dispose()
+    {
+        // Unsubscribe from events to prevent memory leaks
+        DocumentState.DocumentsChanged -= OnDocumentsChanged;
+    }
+
+    // API Response model for document status
+    public class ApiDocumentResponse
+    {
+        public Guid Id { get; set; }
+        public string OriginalFileName { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public DateTime CreatedAt { get; set; }
+        public DateTime? UpdatedAt { get; set; }
+        public string? OriginalS3Key { get; set; }
+        public string? RedactedS3Key { get; set; }
+    }
+
+    // API Response model for download URL
+    public class DownloadResponse
+    {
+        public string DownloadUrl { get; set; } = string.Empty;
+        public string FileName { get; set; } = string.Empty;
+        public long? FileSize { get; set; }
+        public string ContentType { get; set; } = string.Empty;
+    }
+} 

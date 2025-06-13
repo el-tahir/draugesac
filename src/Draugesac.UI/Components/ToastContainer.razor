@@ -1,0 +1,87 @@
+@using Draugesac.UI.Services
+@inject NotificationService NotificationService
+@implements IDisposable
+
+<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1055;">
+    @foreach (var notification in notifications)
+    {
+        <div class="toast show border-0 shadow-lg" role="alert">
+            <div class="toast-header bg-@GetToastColor(notification.Type) text-white border-0">
+                <i class="@GetToastIcon(notification.Type) me-2"></i>
+                <strong class="me-auto">@GetToastTitle(notification.Type)</strong>
+                <small class="text-white-50">@GetTimeAgo(notification.Timestamp)</small>
+                <button type="button" class="btn-close btn-close-white" @onclick="() => RemoveNotification(notification.Id)"></button>
+            </div>
+            <div class="toast-body">
+                @notification.Message
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<NotificationMessage> notifications = new();
+
+    protected override void OnInitialized()
+    {
+        NotificationService.NotificationAdded += OnNotificationAdded;
+        NotificationService.NotificationRemoved += OnNotificationRemoved;
+        notifications = NotificationService.GetNotifications();
+    }
+
+    private void OnNotificationAdded(NotificationMessage notification)
+    {
+        notifications.Add(notification);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnNotificationRemoved(string id)
+    {
+        notifications.RemoveAll(n => n.Id == id);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void RemoveNotification(string id)
+    {
+        NotificationService.RemoveNotification(id);
+    }
+
+    private string GetToastColor(NotificationType type) => type switch
+    {
+        NotificationType.Success => "success",
+        NotificationType.Error => "danger", 
+        NotificationType.Warning => "warning",
+        NotificationType.Info => "info",
+        _ => "secondary"
+    };
+
+    private string GetToastIcon(NotificationType type) => type switch
+    {
+        NotificationType.Success => "bi-check-circle-fill",
+        NotificationType.Error => "bi-exclamation-triangle-fill",
+        NotificationType.Warning => "bi-exclamation-circle-fill", 
+        NotificationType.Info => "bi-info-circle-fill",
+        _ => "bi-bell-fill"
+    };
+
+    private string GetToastTitle(NotificationType type) => type switch
+    {
+        NotificationType.Success => "Success",
+        NotificationType.Error => "Error",
+        NotificationType.Warning => "Warning",
+        NotificationType.Info => "Information",
+        _ => "Notification"
+    };
+
+    private string GetTimeAgo(DateTime timestamp)
+    {
+        var timeSpan = DateTime.Now - timestamp;
+        return timeSpan.TotalMinutes < 1 ? "now" : $"{(int)timeSpan.TotalMinutes}m ago";
+    }
+
+    public void Dispose()
+    {
+        NotificationService.NotificationAdded -= OnNotificationAdded;
+        NotificationService.NotificationRemoved -= OnNotificationRemoved;
+    }
+} 

@@ -1,0 +1,146 @@
+version: '3.8'
+
+services:
+  # =============================================================================
+  # Draugesac API Service
+  # =============================================================================
+  # Main API server for document management and redaction operations
+  # Handles file uploads, redaction requests, and download URL generation
+  draugesac-api:
+    build:
+      context: .
+      dockerfile: src/Draugesac.Api/Dockerfile
+    container_name: draugesac-api
+    ports:
+      - "8080:8080"  # Maps host port 8080 to container port 8080
+    environment:
+      # ASP.NET Core Configuration
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080  # Listen on all interfaces port 8080
+      - ASPNETCORE_Logging__LogLevel__Default=Information
+      - ASPNETCORE_Logging__LogLevel__Microsoft.AspNetCore=Warning
+      
+      # AWS Authentication - Ensure these are set in your environment
+      # These should never be hardcoded in source control
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}  # Required for SSO/temporary credentials
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      
+      # AWS Service Configuration - Set these environment variables
+      # Example: AWS_S3_BUCKET_NAME=draugesac-documents-123456789012-us-east-1
+      - AWS__S3BucketName=${AWS_S3_BUCKET_NAME}
+      - AWS__DynamoDbTableName=${AWS_DYNAMODB_TABLE_NAME}
+      - AWS__SQSQueueUrl=${AWS_SQS_QUEUE_URL}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s  # Wait 40s before first health check (allows app startup)
+    restart: unless-stopped
+    networks:
+      - draugesac-network
+
+  # Future services (commented out until implemented)
+  
+  # # PostgreSQL Database
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: draugesac-postgres
+  #   environment:
+  #     POSTGRES_DB: draugesac
+  #     POSTGRES_USER: draugesac_user
+  #     POSTGRES_PASSWORD: draugesac_password
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U draugesac_user -d draugesac"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   restart: unless-stopped
+  #   networks:
+  #     - draugesac-network
+
+  # # Redis Cache
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: draugesac-redis
+  #   ports:
+  #     - "6379:6379"
+  #   command: redis-server --appendonly yes
+  #   volumes:
+  #     - redis_data:/data
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 10s
+  #     timeout: 3s
+  #     retries: 5
+  #   restart: unless-stopped
+  #   networks:
+  #     - draugesac-network
+
+  # # LocalStack (AWS services emulation)
+  # localstack:
+  #   image: localstack/localstack:latest
+  #   container_name: draugesac-localstack
+  #   ports:
+  #     - "4566:4566"  # LocalStack gateway
+  #     - "4510-4559:4510-4559"  # External services port range
+  #   environment:
+  #     - SERVICES=s3,sqs,sns,lambda
+  #     - DEBUG=1
+  #     - DATA_DIR=/tmp/localstack/data
+  #     - LAMBDA_EXECUTOR=docker
+  #     - DOCKER_HOST=unix:///var/run/docker.sock
+  #   volumes:
+  #     - "/var/run/docker.sock:/var/run/docker.sock"
+  #     - localstack_data:/tmp/localstack
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:4566/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #   restart: unless-stopped
+  #   networks:
+  #     - draugesac-network
+
+  # # RabbitMQ Message Broker
+  # rabbitmq:
+  #   image: rabbitmq:3-management-alpine
+  #   container_name: draugesac-rabbitmq
+  #   ports:
+  #     - "5672:5672"   # AMQP port
+  #     - "15672:15672" # Management UI
+  #   environment:
+  #     RABBITMQ_DEFAULT_USER: draugesac
+  #     RABBITMQ_DEFAULT_PASS: draugesac_password
+  #   volumes:
+  #     - rabbitmq_data:/var/lib/rabbitmq
+  #   healthcheck:
+  #     test: ["CMD", "rabbitmq-diagnostics", "ping"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #   restart: unless-stopped
+  #   networks:
+  #     - draugesac-network
+
+# Network configuration
+networks:
+  draugesac-network:
+    driver: bridge
+
+# Volume definitions (for future use)
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  localstack_data:
+    driver: local
+  rabbitmq_data:
+    driver: local 

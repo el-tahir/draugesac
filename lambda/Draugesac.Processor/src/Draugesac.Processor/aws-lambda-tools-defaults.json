@@ -1,0 +1,16 @@
+{
+  "Information": [
+    "This file provides default values for the deployment wizard inside Visual Studio and the AWS Lambda commands added to the .NET Core CLI.",
+    "To learn more about the Lambda commands with the .NET Core CLI execute the following command at the command line in the project root directory.",
+    "dotnet lambda help",
+    "All the command line options for the Lambda command can be specified in this file."
+  ],
+  "profile": "Draugesac.Processor",
+  "region": "us-east-1",
+  "configuration": "Release",
+  "function-runtime": "dotnet8",
+  "function-memory-size": 2048,
+  "function-timeout": 300,
+  "function-handler": "Draugesac.Processor::Draugesac.Processor.Function::FunctionHandler",
+  "environment-variables": "AWS__S3BucketName=draugesac-documents;AWS__DynamoDbTableName=DraugesacDocuments;AWS__SQSQueueUrl=https://sqs.us-east-1.amazonaws.com/011921741477/draugesac-redaction-queue"
+}

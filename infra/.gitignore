@@ -1,0 +1,39 @@
+# CDK Infrastructure specific ignore patterns
+# Inherits from root .gitignore for common patterns
+
+# CDK asset staging directory
+.cdk.staging
+cdk.out
+
+# CDK context file (contains environment-specific information)
+cdk.context.json
+
+# AWS CDK deployment artifacts
+*.cdk.staging
+
+# Environment files - prevent accidental check-in of secrets
+.env
+.env.*
+!.env.example
+
+# CDK bootstrap template (if customized)
+bootstrap-template.yaml
+
+# Deployment logs
+deploy.log
+synth.log
+
+# Cloud Formation templates (generated)
+template.yaml
+template.json
+
+# CDK metadata
+cdk.json.backup
+
+# Additional infrastructure security files
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
