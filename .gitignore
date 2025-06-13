@@ -20,6 +20,16 @@ bld/
 # Uncomment if you have tasks that create the project's static files in wwwroot
 #wwwroot/
 
+# Vendor/third-party files in wwwroot - use dependency management tools instead
+wwwroot/css/bootstrap/
+wwwroot/js/bootstrap/
+wwwroot/lib/
+wwwroot/vendor/
+*.min.css
+*.min.js
+*.min.css.map
+*.min.js.map
+
 # Visual Studio 2017 auto generated files
 Generated\ Files/
 

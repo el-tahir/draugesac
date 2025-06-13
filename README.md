@@ -23,20 +23,34 @@ Draugesac is a microservices-based application that allows users to upload docum
 - [AWS CLI](https://aws.amazon.com/cli/) configured with appropriate credentials
 - [AWS CDK CLI](https://docs.aws.amazon.com/cdk/v2/guide/getting_started.html)
 - [Node.js](https://nodejs.org/) (for AWS CDK)
+- [LibMan CLI](https://docs.microsoft.com/en-us/aspnet/core/client-side/libman/) (for client-side dependency management)
 
-### 1. Build Lambda Function
+### 1. Install Dependencies
 
-First, build the Lambda function that will be deployed as part of the infrastructure:
+First, install the required tools and restore client-side dependencies:
+
+```bash
+# Install LibMan CLI globally (if not already installed)
+dotnet tool install -g Microsoft.Web.LibraryManager.Cli
+
+# Navigate to UI project and restore client-side libraries
+cd src/Draugesac.UI
+libman restore
+```
+
+### 2. Build Lambda Function
+
+Build the Lambda function that will be deployed as part of the infrastructure:
 
 ```bash
 # Navigate to Lambda function directory
-cd lambda/Draugesac.Processor/src/Draugesac.Processor
+cd ../../lambda/Draugesac.Processor/src/Draugesac.Processor
 
 # Build and publish for deployment
 dotnet publish -c Release -o ./bin/Release/net8.0/publish
 ```
 
-### 2. Deploy AWS Infrastructure
+### 3. Deploy AWS Infrastructure
 
 Deploy the required AWS resources using CDK:
 
@@ -61,7 +75,7 @@ This creates:
 - Lambda function for document redaction
 - IAM roles with least-privilege permissions
 
-### 3. Configure Environment Variables
+### 4. Configure Environment Variables
 
 Set the following environment variables using the values from your CDK deployment output:
 
@@ -77,7 +91,7 @@ export AWS_SQS_QUEUE_URL=<your-queue-url-from-cdk-output>
 - `DocumentsTableName` for `AWS_DYNAMODB_TABLE_NAME`  
 - `JobQueueUrl` for `AWS_SQS_QUEUE_URL`
 
-### 4. Run the Backend API
+### 5. Run the Backend API
 
 ```bash
 # Navigate to project root
@@ -89,7 +103,7 @@ docker compose up --build
 
 The API will be available at `http://localhost:8080`
 
-### 5. Run the Frontend UI
+### 6. Run the Frontend UI
 
 ```bash
 # Navigate to UI project
@@ -120,6 +134,31 @@ curl -X GET http://localhost:8080/api/documents
 4. **Download Result**: Download the redacted document when processing completes
 
 ## 🔧 Development
+
+### Client-Side Dependency Management
+
+This project uses [LibMan](https://docs.microsoft.com/en-us/aspnet/core/client-side/libman/) for managing client-side libraries like Bootstrap. Vendor files are **not committed** to version control to keep the repository lightweight.
+
+**For new developers:**
+```bash
+# Restore client-side dependencies
+cd src/Draugesac.UI
+libman restore
+```
+
+**Managing dependencies:**
+```bash
+# Add a new library
+libman install bootstrap@5.3.2 --destination wwwroot/lib/bootstrap
+
+# Update existing library
+libman update bootstrap
+
+# List installed libraries
+libman list
+```
+
+**Configuration**: See `src/Draugesac.UI/libman.json` for current dependencies.
 
 ### Project Structure
 
@@ -203,6 +242,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 2. **Docker Issues**: Verify Docker Desktop is running and you have sufficient resources
 3. **Port Conflicts**: Check if ports 8080 or 7156 are already in use
 4. **Lambda Timeout**: Increase timeout in CDK configuration for large documents
+5. **Missing Client Libraries**: Run `libman restore` in `src/Draugesac.UI/` if Bootstrap styles are missing
+6. **LibMan Tool Missing**: Install with `dotnet tool install -g Microsoft.Web.LibraryManager.Cli`
 
 ### Getting Help
 
